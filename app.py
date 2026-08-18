@@ -44,7 +44,6 @@ import os
 import io
 import sqlite3
 import secrets
-import imghdr
 import uuid
 from datetime import datetime
 from contextlib import closing
