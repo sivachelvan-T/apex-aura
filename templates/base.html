@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Apex Aura{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap" {% block wrap_style %}{% endblock %}>
+  <div class="topbar">
+    <div class="brand">Apex&nbsp;<span>Aura</span></div>
+    <nav>
+      {% if session.get('officer_id') %}
+        <a href="{{ url_for('appeals.dashboard') }}">Appeals</a>
+        <a href="{{ url_for('appeals.new_appeal') }}">New appeal</a>
+        {% if session.get('role') == 'admin' %}
+          <a href="{{ url_for('admin.admin_users') }}">User management</a>
+        {% endif %}
+        <a href="{{ url_for('auth.logout') }}">Log out ({{ session.get('officer_name') }})</a>
+      {% endif %}
+    </nav>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>
