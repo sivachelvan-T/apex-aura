@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Apex Aura — Sign in{% endblock %}
+{% block wrap_style %}style="max-width:420px;"{% endblock %}
+{% block content %}
+<h1>Secure sign-in</h1>
+<p class="note">
+  Sign in with an active Apex Aura account. Loan officers process appeals;
+  administrators manage users and privileges.
+</p>
+
+<form class="card" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="username">Username</label>
+  <input type="text" id="username" name="username" required autofocus>
+
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" required>
+
+  <button class="btn" type="submit">Sign in</button>
+</form>
+
+<p class="note">
+  New here? <a href="{{ url_for('auth.register') }}">Create a Loan Officer account →</a>
+</p>
+{% endblock %}

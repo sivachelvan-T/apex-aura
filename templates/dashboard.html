@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Apex Aura — Appeals{% endblock %}
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1>Loan appeals</h1>
+    <p class="note">Review DTI recalculations and recorded officer decisions.</p>
+  </div>
+  <a class="btn" href="{{ url_for('appeals.new_appeal') }}">New appeal</a>
+</div>
+
+{% if appeals %}
+<div class="card">
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Applicant</th>
+      <th>Created</th>
+      <th>New DTI</th>
+      <th>Result</th>
+      <th></th>
+    </tr>
+    {% for a in appeals %}
+    <tr>
+      <td>#{{ a.id }}</td>
+      <td>{{ a.applicant_name }}</td>
+      <td>{{ a.created_at }}</td>
+      <td>
+        {% if a.recalculated_dti is not none %}
+          {{ "%.2f"|format(a.recalculated_dti * 100) }}%
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        {% if a.clears %}
+          <span class="stamp verified">clears</span>
+        {% else %}
+          <span class="stamp alert">exceeds</span>
+        {% endif %}
+      </td>
+      <td><a href="{{ url_for('appeals.view_appeal', appeal_id=a.id) }}">View →</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="card empty">
+  <h3>No appeals yet</h3>
+  <p class="note">Create the first appeal to begin the DTI recalculation workflow.</p>
+  <a class="btn" href="{{ url_for('appeals.new_appeal') }}">Create appeal</a>
+</div>
+{% endif %}
+{% endblock %}

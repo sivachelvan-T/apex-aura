@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Apex Aura — Create account{% endblock %}
+{% block wrap_style %}style="max-width:420px;"{% endblock %}
+{% block content %}
+<h1>Create Loan Officer account</h1>
+<p class="note">
+  Public registration creates Loan Officer privileges only.
+  Administrator accounts can be created by an existing administrator.
+</p>
+
+{% with messages = get_flashed_messages(category_filter=['error']) %}
+  {% for m in messages %}<div class="flash error">{{ m }}</div>{% endfor %}
+{% endwith %}
+
+<form class="card" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <label for="username">Choose a username</label>
+  <input type="text" id="username" name="username"
+         minlength="3" maxlength="50"
+         pattern="[A-Za-z0-9_.-]+" required autofocus>
+
+  <label for="password">Choose a password</label>
+  <input type="password" id="password" name="password" minlength="8" required>
+
+  <label for="confirm_password">Confirm password</label>
+  <input type="password" id="confirm_password"
+         name="confirm_password" minlength="8" required>
+
+  <button class="btn" type="submit">Create account</button>
+</form>
+
+<p class="note">
+  Already have an account?
+  <a href="{{ url_for('auth.login') }}">Sign in →</a>
+</p>
+{% endblock %}

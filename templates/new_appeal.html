@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Apex Aura — New appeal{% endblock %}
+{% block content %}
+<h1>New loan appeal</h1>
+<p class="note">
+  One document, one metric. View the pay stub yourself and manually enter
+  the figures. Apex Aura never auto-fills financial values from the document.
+</p>
+
+{% with messages = get_flashed_messages(category_filter=['error']) %}
+  {% for m in messages %}<div class="flash error">{{ m }}</div>{% endfor %}
+{% endwith %}
+
+<form class="card" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <label for="applicant_name">Applicant name</label>
+  <input type="text" id="applicant_name" name="applicant_name"
+         maxlength="120" required>
+
+  <label for="pay_stub">New pay stub</label>
+  <input type="file" id="pay_stub" name="pay_stub"
+         accept=".pdf,.png,.jpg,.jpeg" required>
+  <p class="note">PDF, PNG, JPG or JPEG. Maximum 5 MB.</p>
+
+  <div class="grid2">
+    <div>
+      <label for="prior_dti">Prior DTI (decimal)</label>
+      <input type="number" id="prior_dti" name="prior_dti"
+             min="0" step="0.0001" required>
+    </div>
+    <div>
+      <label for="monthly_net_income">Monthly net income</label>
+      <input type="number" id="monthly_net_income"
+             name="monthly_net_income" min="0.01"
+             step="0.01" required>
+    </div>
+    <div>
+      <label for="existing_monthly_debt">Existing monthly debt</label>
+      <input type="number" id="existing_monthly_debt"
+             name="existing_monthly_debt" min="0"
+             step="0.01" required>
+    </div>
+    <div>
+      <label for="proposed_loan_payment">Proposed loan payment</label>
+      <input type="number" id="proposed_loan_payment"
+             name="proposed_loan_payment" min="0"
+             step="0.01" required>
+    </div>
+  </div>
+
+  <label class="checkbox">
+    <input type="checkbox" name="officer_verified" value="1" required>
+    I verified the Monthly Net Income and other entered figures against the uploaded pay stub.
+  </label>
+
+  <button class="btn" type="submit">Recalculate DTI</button>
+</form>
+{% endblock %}

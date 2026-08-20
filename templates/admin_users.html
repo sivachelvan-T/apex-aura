@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Apex Aura — User management{% endblock %}
+{% block content %}
+<h1>User management</h1>
+<p class="note">
+  Administrators can create users, assign privileges, change roles,
+  and activate or deactivate accounts. At least one active administrator
+  must always remain.
+</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h3>Create user</h3>
+  <form method="post" action="{{ url_for('admin.admin_create_user') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="grid2">
+      <div>
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username"
+               minlength="3" maxlength="50"
+               pattern="[A-Za-z0-9_.-]+" required>
+      </div>
+
+      <div>
+        <label for="role">Privilege</label>
+        <select id="role" name="role" required>
+          <option value="officer">Loan Officer</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="password">Temporary password</label>
+        <input type="password" id="password" name="password"
+               minlength="8" required>
+      </div>
+
+      <div>
+        <label for="confirm_password">Confirm password</label>
+        <input type="password" id="confirm_password"
+               name="confirm_password" minlength="8" required>
+      </div>
+    </div>
+
+    <button class="btn" type="submit">Create user</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Registered users</h3>
+  <table>
+    <tr>
+      <th>Username</th>
+      <th>Privilege</th>
+      <th>Status</th>
+      <th>Change privilege</th>
+      <th>Account</th>
+    </tr>
+
+    {% for u in users %}
+    <tr>
+      <td class="mono">{{ u.username }}</td>
+      <td>
+        {% if u.role == 'admin' %}
+          <span class="badge">Administrator</span>
+        {% else %}
+          <span class="badge">Loan Officer</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if u.active %}
+          <span class="stamp verified">active</span>
+        {% else %}
+          <span class="stamp alert">inactive</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if u.id == session.get('officer_id') %}
+          <span class="note">Current account</span>
+        {% else %}
+          <form class="inline-form" method="post"
+                action="{{ url_for('admin.admin_change_role', user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <select name="role">
+              <option value="officer" {% if u.role == 'officer' %}selected{% endif %}>Loan Officer</option>
+              <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Administrator</option>
+            </select>
+            <button class="btn small" type="submit">Save</button>
+          </form>
+        {% endif %}
+      </td>
+      <td>
+        {% if u.id == session.get('officer_id') %}
+          <span class="note">Current account</span>
+        {% else %}
+          <form class="inline-form" method="post"
+                action="{{ url_for('admin.admin_change_status', user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% if u.active %}
+              <input type="hidden" name="active" value="0">
+              <button class="btn danger small" type="submit">Deactivate</button>
+            {% else %}
+              <input type="hidden" name="active" value="1">
+              <button class="btn small" type="submit">Activate</button>
+            {% endif %}
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="security-strip">
+  Privileges are enforced server-side. A Loan Officer cannot reach admin
+  routes by changing the URL.
+</div>
+{% endblock %}

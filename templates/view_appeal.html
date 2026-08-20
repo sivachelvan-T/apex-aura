@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Apex Aura — Appeal #{{ appeal.id }}{% endblock %}
+{% block content %}
+<h1>Appeal #{{ appeal.id }}</h1>
+<p class="note">Created {{ appeal.created_at }}</p>
+
+<div class="grid2">
+  <div class="card">
+    <h3>Applicant and figures</h3>
+    <div class="ledger-line"><span>Applicant</span><strong>{{ appeal.applicant_name }}</strong></div>
+    <div class="ledger-line"><span>Monthly net income</span><strong>{{ "%.2f"|format(appeal.monthly_net_income) }}</strong></div>
+    <div class="ledger-line"><span>Existing monthly debt</span><strong>{{ "%.2f"|format(appeal.existing_monthly_debt) }}</strong></div>
+    <div class="ledger-line"><span>Proposed payment</span><strong>{{ "%.2f"|format(appeal.proposed_loan_payment) }}</strong></div>
+    <div class="ledger-line"><span>Prior DTI</span><strong>{{ "%.2f"|format(appeal.prior_dti * 100) }}%</strong></div>
+    <div class="ledger-line total"><span>Recalculated DTI</span><strong>{{ "%.2f"|format(appeal.recalculated_dti * 100) }}%</strong></div>
+  </div>
+
+  <div class="card">
+    <h3>Recommendation</h3>
+    {% if appeal.clears %}
+      <span class="stamp verified">clears 43%</span>
+    {% else %}
+      <span class="stamp alert">exceeds 43%</span>
+    {% endif %}
+    <p>{{ appeal.recommendation }}</p>
+    <p class="note">Recommendation only — the officer's recorded decision is final.</p>
+
+    <p>
+      <a href="{{ url_for('appeals.uploaded_file', filename=appeal.pay_stub_filename) }}"
+         target="_blank" rel="noopener">Open uploaded pay stub →</a>
+    </p>
+
+    <h3>Officer decision</h3>
+    <p><strong>{{ appeal.officer_decision|capitalize }}</strong></p>
+
+    <form method="post" action="{{ url_for('appeals.decide_appeal', appeal_id=appeal.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="button-row">
+        <button class="btn" name="decision" value="approved" type="submit">Approve</button>
+        <button class="btn danger" name="decision" value="denied" type="submit">Uphold denial</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
