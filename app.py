@@ -37,7 +37,7 @@ against path traversal / overwrite, and a file-size cap.
 Run:
     pip install -r requirements.txt
     python app.py
-Then open http://127.0.0.1:5000  (demo login: officer / ChangeMe123!)
+Then open http://127.0.0.1:5000  (demo officer: officer / ChangeMe123!; demo admin: admin / ChangeMeAdmin123!)
 """
 
 import os
@@ -168,10 +168,20 @@ def init_db():
             CREATE TABLE IF NOT EXISTS officers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'officer',
+                active INTEGER NOT NULL DEFAULT 1
             )
             """
         )
+
+        # Backward-compatible migration for databases created by older versions.
+        columns = {row[1] for row in db.execute("PRAGMA table_info(officers)").fetchall()}
+        if "role" not in columns:
+            db.execute("ALTER TABLE officers ADD COLUMN role TEXT NOT NULL DEFAULT 'officer'")
+        if "active" not in columns:
+            db.execute("ALTER TABLE officers ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS appeals (
@@ -179,14 +189,12 @@ def init_db():
                 created_at TEXT NOT NULL,
                 officer_id INTEGER NOT NULL,
 
-                -- Encrypted (sensitive) columns — never stored in plaintext.
                 applicant_name_enc TEXT NOT NULL,
                 monthly_net_income_enc TEXT NOT NULL,
                 existing_monthly_debt_enc TEXT NOT NULL,
                 proposed_loan_payment_enc TEXT NOT NULL,
                 prior_dti_enc TEXT NOT NULL,
 
-                -- Non-sensitive / operational columns.
                 pay_stub_filename TEXT NOT NULL,
                 officer_verified INTEGER NOT NULL DEFAULT 0,
                 recalculated_dti REAL,
@@ -197,13 +205,44 @@ def init_db():
             )
             """
         )
-        # Seed one demo officer account if none exists yet.
-        existing = db.execute("SELECT COUNT(*) FROM officers").fetchone()
-        if existing[0] == 0:
+
+        # Ensure older accounts receive the least-privilege officer role.
+        db.execute("UPDATE officers SET role = 'officer' WHERE role IS NULL OR role = ''")
+        db.execute("UPDATE officers SET active = 1 WHERE active IS NULL")
+
+        # Seed the original demo officer if it does not exist.
+        existing_officer = db.execute(
+            "SELECT id FROM officers WHERE username = ?", ("officer",)
+        ).fetchone()
+        if existing_officer is None:
             db.execute(
-                "INSERT INTO officers (username, password_hash) VALUES (?, ?)",
+                "INSERT INTO officers (username, password_hash, role, active) VALUES (?, ?, 'officer', 1)",
                 ("officer", generate_password_hash("ChangeMe123!")),
             )
+
+        # Seed an admin account. In Render, set ADMIN_USERNAME and ADMIN_PASSWORD
+        # as environment variables. The defaults are for a college/demo setup only.
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin").strip().lower()
+        admin_password = os.environ.get("ADMIN_PASSWORD", "ChangeMeAdmin123!")
+        if admin_username == "officer":
+            admin_username = "admin"
+
+        existing_admin = db.execute(
+            "SELECT id FROM officers WHERE username = ?", (admin_username,)
+        ).fetchone()
+        if existing_admin is None:
+            db.execute(
+                "INSERT INTO officers (username, password_hash, role, active) VALUES (?, ?, 'admin', 1)",
+                (admin_username, generate_password_hash(admin_password)),
+            )
+        else:
+            # Never overwrite an existing password or reactivate an account here.
+            # This preserves administrator changes after the first creation.
+            db.execute(
+                "UPDATE officers SET role = 'admin' WHERE id = ?",
+                (existing_admin[0],),
+            )
+
         db.commit()
 
 
@@ -216,8 +255,35 @@ def login_required(view):
 
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not session.get("officer_id"):
+        user_id = session.get("officer_id")
+        if not user_id:
             return redirect(url_for("login", next=request.path))
+
+        row = get_db().execute(
+            "SELECT id, username, role, active FROM officers WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None or not row["active"]:
+            session.clear()
+            flash("Your account is inactive. Contact an administrator.", "error")
+            return redirect(url_for("login"))
+
+        # Refresh role/name from the database on every protected request.
+        session["officer_name"] = row["username"]
+        session["role"] = row["role"]
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_required(view):
+    from functools import wraps
+
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if session.get("role") != "admin":
+            abort(403, description="Administrator privileges are required for this page.")
         return view(*args, **kwargs)
 
     return wrapped
@@ -240,24 +306,18 @@ def allowed_extension(filename: str) -> bool:
 
 
 def content_matches_extension(file_bytes: bytes, extension: str) -> bool:
-    """Check the file's real content using magic bytes."""
+    """Check the file's real content using magic bytes.
 
+    This avoids Python 3.14's removed imghdr module and rejects files whose
+    content does not match the claimed PDF/PNG/JPEG extension.
+    """
     extension = extension.lower()
-
-    # PDF
     if extension == "pdf":
         return file_bytes.startswith(b"%PDF-")
-
-    # JPEG
     if extension in {"jpg", "jpeg"}:
         return file_bytes.startswith(b"\xff\xd8\xff")
-
-    # PNG
     if extension == "png":
-        return file_bytes.startswith(
-            b"\x89PNG\r\n\x1a\n"
-        )
-
+        return file_bytes.startswith(b"\x89PNG\r\n\x1a\n")
     return False
 
 
@@ -364,6 +424,9 @@ input:focus { outline: 2px solid var(--verified); outline-offset: 1px; }
 }
 .btn:hover { background: var(--accent-ink); }
 .btn.secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+.btn.danger { background: var(--alert); }
+.inline-form { display: inline; }
+.badge { display:inline-block; padding:3px 8px; border:1px solid var(--line); border-radius:999px; font-size:11px; font-family: 'IBM Plex Mono', monospace; }
 .check-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; }
 .check-row input { width: auto; margin-top: 3px; }
 .ledger-line {
@@ -405,6 +468,9 @@ TOPBAR = """
     {% if session.get('officer_id') %}
       <a href="{{ url_for('dashboard') }}">Appeals</a>
       <a href="{{ url_for('new_appeal') }}">New appeal</a>
+      {% if session.get('role') == 'admin' %}
+        <a href="{{ url_for('admin_users') }}">User management</a>
+      {% endif %}
       <a href="{{ url_for('logout') }}">Log out ({{ session.get('officer_name') }})</a>
     {% endif %}
   </nav>
@@ -413,11 +479,11 @@ TOPBAR = """
 
 LOGIN_TEMPLATE = """
 <!doctype html><html><head><meta charset="utf-8">
-<title>Apex Aura — Officer sign-in</title>""" + HEAD + """
+<title>Apex Aura — Sign in</title>""" + HEAD + """
 </head><body><div class="wrap" style="max-width:420px;">
 """ + TOPBAR + """
-  <h1>Officer sign-in</h1>
-  <p class="note">DTI appeal recalculation is restricted to authenticated loan officers.</p>
+  <h1>Secure sign-in</h1>
+  <p class="note">Sign in with an active Apex Aura user account. Administrators can manage users and loan officers can process appeals.</p>
   {% with messages = get_flashed_messages(category_filter=['error']) %}
     {% for m in messages %}<div class="flash error">{{ m }}</div>{% endfor %}
   {% endwith %}
@@ -429,7 +495,7 @@ LOGIN_TEMPLATE = """
     <input type="password" id="password" name="password" required>
     <button class="btn" type="submit">Sign in</button>
   </form>
-  <p class="note">Demo credentials: <span class="mono">officer / ChangeMe123!</span> — change this before any real use.</p>
+  <p class="note">Demo accounts: <span class="mono">officer / ChangeMe123!</span> and <span class="mono">admin / ChangeMeAdmin123!</span>. Change these before any real use.</p>
 </div></body></html>
 """
 
@@ -578,6 +644,71 @@ VIEW_APPEAL_TEMPLATE = """
 """
 
 
+ADMIN_USERS_TEMPLATE = """
+<!doctype html><html><head><meta charset="utf-8">
+<title>Apex Aura — User management</title>""" + HEAD + """
+</head><body><div class="wrap">
+""" + TOPBAR + """
+  <h1>User management</h1>
+  <p class="note">Administrators can create loan officers or other administrators and deactivate accounts. Admin accounts inherit all officer privileges.</p>
+
+  {% with messages = get_flashed_messages() %}
+    {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <h3>Create user</h3>
+    <form method="post" action="{{ url_for('admin_create_user') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" minlength="3" maxlength="50" pattern="[A-Za-z0-9_.-]+" required>
+
+      <label for="password">Temporary password</label>
+      <input type="password" id="password" name="password" minlength="8" required>
+
+      <label for="role">Privilege level</label>
+      <select id="role" name="role" style="width:100%;padding:10px 12px;border:1px solid var(--line);background:#fff;font-size:15px;">
+        <option value="officer">Loan Officer — process appeals</option>
+        <option value="admin">Administrator — manage users + process appeals</option>
+      </select>
+
+      <button class="btn" type="submit">Create user</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Existing users</h3>
+    <table>
+      <tr><th>Username</th><th>Role</th><th>Status</th><th>Action</th></tr>
+      {% for u in users %}
+      <tr>
+        <td class="mono">{{ u.username }}</td>
+        <td><span class="badge">{{ u.role }}</span></td>
+        <td>{% if u.active %}<span class="stamp verified">active</span>{% else %}<span class="stamp alert">inactive</span>{% endif %}</td>
+        <td>
+          {% if u.id != session.get('officer_id') and u.active %}
+          <form class="inline-form" method="post" action="{{ url_for('admin_deactivate_user', user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn danger" style="margin-top:0;padding:7px 12px;" type="submit">Deactivate</button>
+          </form>
+          {% elif u.id == session.get('officer_id') %}
+            <span class="note">Current account</span>
+          {% else %}
+            <span class="note">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="security-strip">
+    Privileges are enforced server-side. An officer cannot access user-management routes by changing the URL. Only an active administrator can create or deactivate accounts.
+  </div>
+</div></body></html>
+"""
+
+
 # --------------------------------------------------------------------------
 # Routes
 # --------------------------------------------------------------------------
@@ -595,12 +726,13 @@ def login():
         password = request.form.get("password", "")
         db = get_db()
         row = db.execute(
-            "SELECT * FROM officers WHERE username = ?", (username,)
+            "SELECT * FROM officers WHERE username = ? AND active = 1", (username,)
         ).fetchone()
         if row and check_password_hash(row["password_hash"], password):
             session.clear()
             session["officer_id"] = row["id"]
             session["officer_name"] = row["username"]
+            session["role"] = row["role"]
             return redirect(request.args.get("next") or url_for("dashboard"))
         flash("Incorrect username or password.", "error")
     return render_template_string(LOGIN_TEMPLATE, csrf_token=get_csrf_token())
@@ -610,6 +742,82 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, username, role, active FROM officers ORDER BY username"
+    ).fetchall()
+    users = [dict(r) for r in rows]
+    return render_template_string(
+        ADMIN_USERS_TEMPLATE, users=users, csrf_token=get_csrf_token()
+    )
+
+
+@app.route("/admin/users/create", methods=["POST"])
+@admin_required
+def admin_create_user():
+    check_csrf()
+    username = request.form.get("username", "").strip().lower()
+    password = request.form.get("password", "")
+    role = request.form.get("role", "officer").strip().lower()
+
+    import re
+    if not re.fullmatch(r"[a-z0-9_.-]{3,50}", username):
+        flash("Username must be 3–50 characters and use only letters, numbers, dot, underscore, or hyphen.", "error")
+        return redirect(url_for("admin_users"))
+    if len(password) < 8:
+        flash("Password must contain at least 8 characters.", "error")
+        return redirect(url_for("admin_users"))
+    if role not in {"officer", "admin"}:
+        flash("Invalid privilege level.", "error")
+        return redirect(url_for("admin_users"))
+
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO officers (username, password_hash, role, active) VALUES (?, ?, ?, 1)",
+            (username, generate_password_hash(password), role),
+        )
+        db.commit()
+        flash(f"User '{username}' created with {role} privileges.")
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("That username already exists.", "error")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/deactivate", methods=["POST"])
+@admin_required
+def admin_deactivate_user(user_id):
+    check_csrf()
+    if user_id == session.get("officer_id"):
+        abort(400, description="You cannot deactivate your own account.")
+
+    db = get_db()
+    user = db.execute(
+        "SELECT id, username, role, active FROM officers WHERE id = ?", (user_id,)
+    ).fetchone()
+    if user is None:
+        abort(404)
+    if not user["active"]:
+        flash("User is already inactive.", "error")
+        return redirect(url_for("admin_users"))
+
+    if user["role"] == "admin":
+        active_admins = db.execute(
+            "SELECT COUNT(*) FROM officers WHERE role = 'admin' AND active = 1"
+        ).fetchone()[0]
+        if active_admins <= 1:
+            abort(400, description="The last active administrator cannot be deactivated.")
+
+    db.execute("UPDATE officers SET active = 0 WHERE id = ?", (user_id,))
+    db.commit()
+    flash(f"User '{user['username']}' has been deactivated.")
+    return redirect(url_for("admin_users"))
 
 
 @app.route("/dashboard")
@@ -743,12 +951,17 @@ def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
+@app.errorhandler(403)
+def forbidden(e):
+    return f"<h3>403 — {e.description}</h3><a href='/'>Back</a>", 403
+
+
 @app.errorhandler(400)
 def bad_request(e):
     return f"<h3>400 — {e.description}</h3><a href='/'>Back</a>", 400
 
 
-# Initialize database when the application starts.
+# Initialize tables and seed demo accounts when Gunicorn imports app:app.
 init_db()
 
 if __name__ == "__main__":
