@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+apex_aura.db
+*.db
+secret.key
+uploads/
+.DS_Store
